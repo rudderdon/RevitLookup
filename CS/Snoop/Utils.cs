@@ -1,6 +1,6 @@
 #region Header
 //
-// Copyright 2003-2017 by Autodesk, Inc. 
+// Copyright 2003-2019 by Autodesk, Inc. 
 //
 // Permission to use, copy, modify, and distribute this software in
 // object code form for any purpose and without fee is hereby granted, 
@@ -27,6 +27,8 @@ using System.Diagnostics;
 using System.Windows.Forms;
 using System.Drawing;
 using System.Drawing.Printing;
+using System.Reflection;
+using Autodesk.Revit.DB;
 
 namespace RevitLookup.Snoop
 {
@@ -117,48 +119,64 @@ namespace RevitLookup.Snoop
          pgForm.ShowDialog();
       }
 
-      public static string
-        ObjToTypeStr(System.Object obj)
-      {
-         if (obj == null)
-            return "< null >";
+       private static string GetNamedObjectLabel(object obj)
+       {
+           var nameProperty = obj
+               .GetType()
+               .GetProperty("Name", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
 
-         Autodesk.Revit.DB.Element elem = obj as Autodesk.Revit.DB.Element;
-         if (elem != null)
-         {
-            string nameStr = (elem.Name == string.Empty) ? "???" : elem.Name;		// use "???" if no name is set
-            return string.Format("< {0}  {1}  {2,4} >", obj.GetType().Name, nameStr, elem.Id.IntegerValue.ToString());
-         }
+           if (nameProperty != null)
+           {
+               var propertyValue = nameProperty.GetValue(obj) as string;
 
-         return string.Format("< {0} >", obj.GetType().Name);
-      }
+               return string.Format("< {0}  {1} >", obj.GetType().Name,
+                   string.IsNullOrEmpty(propertyValue) ? "???" : propertyValue);
+           }
 
-      public static string
-        ObjToLabelStr(System.Object obj)
-      {
-         if (obj == null)
-            return "< null >";
+           return null;
+       }
 
-         Autodesk.Revit.DB.Element elem = obj as Autodesk.Revit.DB.Element;
-         if (elem != null)
-         {
-            // TBD: Exceptions are thrown in certain cases when accessing the Name property. 
-            // Eg. for the RoomTag object. So we will catch the exception and display the exception message
-            // arj - 1/23/07
-            try
-            {
-               string nameStr = (elem.Name == string.Empty) ? "???" : elem.Name;		// use "???" if no name is set
-               return string.Format("< {0}  {1} >", nameStr, elem.Id.IntegerValue.ToString());
-            }
-            catch (System.InvalidOperationException ex)
-            {
-               return string.Format("< {0}  {1} >", null, ex.Message);
-            }
-         }
-         return string.Format("< {0} >", obj.GetType().Name);
-      }
+       public static string GetParameterObjectLabel(object obj)
+       {
+           var parameter = obj as Parameter;
 
-      public static void
+           return parameter?.Definition.Name;
+       }
+
+       private static string GetFamilyParameterObjectLabel(object obj)
+       {
+           var familyParameter = obj as FamilyParameter;
+
+           return familyParameter?.Definition.Name;
+       }
+
+       public static string ObjToLabelStr(object obj)
+       {
+           if (obj == null)
+               return "< null >";
+
+           var elem = obj as Element;
+
+           if (elem != null)
+           {
+               // TBD: Exceptions are thrown in certain cases when accessing the Name property. 
+               // Eg. for the RoomTag object. So we will catch the exception and display the exception message
+               // arj - 1/23/07
+               try
+               {
+                   var nameStr = (elem.Name == string.Empty) ? "???" : elem.Name; // use "???" if no name is set
+                   return $"< {nameStr}  {elem.Id.IntegerValue} >";
+               }
+               catch (InvalidOperationException ex)
+               {
+                   return $"< {null}  {ex.Message} >";
+               }
+           }
+
+           return GetNamedObjectLabel(obj) ?? GetParameterObjectLabel(obj) ?? GetFamilyParameterObjectLabel(obj) ?? $"< {obj.GetType().Name} >";
+       }
+
+       public static void
       CopyToClipboard(ListView lv)
       {
          if (lv.Items.Count == 0)
